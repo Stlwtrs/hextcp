@@ -338,7 +338,7 @@ if [ "$SOCKET_MODE" == "unix" ]; then
                             fi
                           else
                             if [ "$SHOW_PROC" = true ]; then
-                              output_line=$(printf "%-12s  %-22s  %s"  "$state_str"  "$ip_dec"  "$port_dec"  "$proc_name")
+                              output_line=$(printf "%-12s  %-22s  %-12s  %s"  "$state_str"  "$ip_dec"  "$port_dec"  "$proc_name")
                             else
                               output_line=$(printf "%-12s  %-22s  %s"  "$state_str"  "$ip_dec"  "$port_dec")
                             fi
