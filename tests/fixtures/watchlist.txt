@@ -1,0 +1,4 @@
+# known-bad addresses
+13.12.11.10
+
+2001:DB8:0:1::ABCD   # case-insensitive
