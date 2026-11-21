@@ -1,203 +1,280 @@
 ```
-      :::    ::: :::::::::: :::    ::: ::::::::::: ::::::::  ::::::::: 
-     :+:    :+: :+:        :+:    :+:     :+:    :+:    :+: :+:    :+: 
-    +:+    +:+ +:+         +:+  +:+      +:+    +:+        +:+    +:+  
-   +#++:++#++ +#++:++#     +#++:+       +#+    +#+        +#++:++#+    
-  +#+    +#+ +#+         +#+  +#+      +#+    +#+        +#+           
- #+#    #+# #+#        #+#    #+#     #+#    #+#    #+# #+#            
-###    ### ########## ###    ###     ###     ########  ###             
+      :::    ::: :::::::::: :::    ::: ::::::::::: ::::::::  :::::::::
+     :+:    :+: :+:        :+:    :+:     :+:    :+:    :+: :+:    :+:
+    +:+    +:+ +:+         +:+  +:+      +:+    +:+        +:+    +:+
+   +#++:++#++ +#++:++#     +#++:+       +#+    +#+        +#++:++#+
+  +#+    +#+ +#+         +#+  +#+      +#+    +#+        +#+
+ #+#    #+# #+#        #+#    #+#     #+#    #+#    #+# #+#
+###    ### ########## ###    ###     ###     ########  ###
 ```
 
-***A ~99% native Bash script designed to parse `/proc/net/tcp` and decode Little-Endian hexadecimal IPs and ports into human readable format.***
+**Decode Linux socket tables straight from `/proc/net`, for systems where `netstat`, `ss` and `lsof` are missing or blocked.**
+
+![Tests](https://github.com/Stlwtrs/hextcp/actions/workflows/tests.yml/badge.svg)
+![Version](https://img.shields.io/badge/version-2.0.0-blue)
+![Bash](https://img.shields.io/badge/bash-4.0%2B-4EAA25?logo=gnubash&logoColor=white)
+![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
+![License](https://img.shields.io/badge/license-MIT-green)
+
+---
+
+## Table of Contents
+
+1. [Why hextcp Exists](#why-hextcp-exists)
+2. [Features](#features)
+3. [Installation](#installation)
+4. [Usage](#usage)
+5. [Examples](#examples)
+6. [How It Works](#how-it-works)
+7. [What Changed in Version 2](#what-changed-in-version-2)
+8. [Limitations](#limitations)
+9. [Testing](#testing)
+10. [Contributing and Security](#contributing-and-security)
+11. [How This Was Built](#how-this-was-built)
+12. [License and Disclaimer](#license-and-disclaimer)
+
+---
+
+## Why hextcp Exists
 
-## Why I Made This Tool
+During Linux privilege escalation, for example in TryHackMe's *Red Stone One Carat* room, you often land in a restricted shell where `netstat`, `ss` and `lsof` are blocked or not installed. The kernel still exposes every socket in `/proc/net/tcp`, but as raw little-endian hexadecimal:
+
+```text
+  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+   0: 0100007F:0CEA 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 1001
+```
+
+Decoding that by hand during a CTF is slow and error-prone. hextcp turns it into this:
+
+```text
+PROTO  STATE   LOCAL ADDRESS   REMOTE ADDRESS
+tcp    LISTEN  127.0.0.1:3306  0.0.0.0:*
+```
+
+A MySQL server reachable only from the machine itself: a classic privilege-escalation lead.
+
+---
+
+## Features
+
+| Feature | Flag |
+|---|---|
+| TCP over IPv4 and IPv6 together, with correct RFC 5952 IPv6 formatting | default, `-4`, `-6` |
+| UDP sockets | `-U` |
+| Unix domain sockets, including abstract (`@name`) sockets | `-u` |
+| Local **and** remote address and port for every connection | default |
+| All 12 TCP states by name (`TIME_WAIT`, `CLOSE_WAIT`, ...) | `-a` |
+| Owning process and PID, found in one pass over `/proc` | `-p` |
+| Flag processes running from `/tmp`, `/var/tmp`, `/dev/shm`, memory (`memfd`) or a deleted file | `-e` |
+| Flag connections to IPs in a threat watchlist (IPv4 and IPv6) | `-w <file>` |
+| Reverse DNS, with private and loopback ranges labelled instead of looked up | `-r` |
+| Valid JSON Lines output for `jq`, scripts and SIEMs | `-j` |
+| Decode a **saved copy** of a table from another machine | `-f <file>` |
+| Count matching sockets, or save output to a file | `-c`, `-o <file>` |
+| Scriptable exit codes, including `3` when an alert fires | |
+
+**100% native Bash for decoding.** Reading and decoding every table, filtering, counting, JSON, watchlist checks, saved files and output use only Bash builtins, with no Python, `awk`, `sed`, `grep` or even `cat`. The test suite proves it by running hextcp with an empty `PATH`, so no external programs exist at all. That's what makes it usable in restricted shells.
+
+Only three optional flags need anything outside Bash, because Bash has no builtin to read symlinks or query DNS:
+
+| Flag | Needs | Why |
+|---|---|---|
+| `-p`, `-e` | `find` or `readlink` | Reading `/proc/<pid>/fd` links to map sockets to processes. Falls back from `find` to `readlink` on BusyBox systems |
+| `-r` | `getent` | Reverse DNS lookups |
+
+---
+
+## Installation
+
+```bash
+git clone https://github.com/Stlwtrs/hextcp.git
+cd hextcp
+sudo install -Dm755 hextcp.sh /usr/local/bin/hextcp
+```
+
+Or run it in place with `./hextcp.sh`. On a target machine with no `git`, the script is a single file you can copy over and run with `bash hextcp.sh`.
+
+---
+
+## Usage
+
+```text
+hextcp [-46Uu] [-acjpre] [-f file] [-o file] [-w file] [-V] [-h]
+```
+
+| Flag | Description |
+|---|---|
+| `-4` / `-6` | IPv4 or IPv6 only (default: both) |
+| `-U` | UDP instead of TCP |
+| `-u` | Unix domain sockets instead of TCP |
+| `-f <file>` | Decode a saved table; the type is detected from its header |
+| `-a` | Show every state (default: listening and connected only; for Unix sockets, named sockets only) |
+| `-c` | Print only the number of matching sockets |
+| `-j` | JSON Lines output |
+| `-o <file>` | Also write the output to a file (without colour codes) |
+| `-p` | Show the owning process and PID. Without root, only your own processes are visible |
+| `-e` | Flag suspicious executable paths (implies `-p`) |
+| `-w <file>` | Flag connections to watchlisted IPs: one per line, `#` comments allowed |
+| `-r` | Resolve remote IPs to hostnames |
+| `-V` / `-h` | Version / help |
 
-During Linux privilege escalation, specifically in restricted shell environments such as the one in TryHackMe's *Red Stone One Carat* room, standard tools such as `netstat`, `ss`, and `lsof` are often blocked or not installed meaning I had to decode the data via `/proc/net/tcp` to find the open ports locally on the system.
+### Exit codes
 
-When you are forced to read `/proc/net/tcp` manually, the output is a wall of raw kernel data. In fact, the local addresses are written in **Little-Endian Hexadecimal**. *(e.g., `0100007F:7B3B`)*
+| Code | Meaning |
+|---|---|
+| `0` | Success |
+| `1` | No socket table could be read |
+| `2` | Usage error |
+| `3` | A watchlist or suspicious-path alert was raised |
 
-I built this tool because manually doing the hex-to-decimal math and reversing byte orders during a CTF is tedious and prone to human error. `hextcp` is designed to be a fast, lightweight replacement for standard network enumeration tools and it also comes with a plethora of threat hunting capabilities built in.
+---
 
-## Features In This Tool
+## Examples
+
+Outputs below come from the test fixtures in `tests/fixtures/`, so they are reproducible.
 
-*  **~99% Native Bash:** No Python, Ruby, or external dependencies required *(minus a few caveats)*. This tool runs majorily on built-in Bash features such as parameter expansion and arithmetic expansion. It utilizes standard POSIX utilities such as `awk` and `find` only for kernel-level process mapping.
+**Everything listening or connected, IPv4 and IPv6** (`hextcp`)
 
-*  **Unix Socket Support:** It parses `/proc/net/unix` to enumerate local inter-process communication sockets. *(such as Docker, D-Bus, or systemd.)*
+```text
+PROTO  STATE        LOCAL ADDRESS                  REMOTE ADDRESS
+tcp    LISTEN       127.0.0.1:3306                 0.0.0.0:*
+tcp    ESTABLISHED  10.0.2.15:22                   192.168.1.100:54321
+tcp    ESTABLISHED  10.0.2.15:45296                13.12.11.10:4444
+tcp6   LISTEN       [::]:80                        [::]:*
+tcp6   LISTEN       [::1]:8080                     [::]:*
+tcp6   ESTABLISHED  [::ffff:10.0.2.15]:22          [::ffff:192.168.1.100]:54322
+tcp6   LISTEN       [fe80::25a:50ff:fe12:3456]:53  [::]:*
+tcp6   ESTABLISHED  [2001:db8::1]:443              [2001:db8:0:1::abcd]:60000
+tcp6   LISTEN       [2001:db8::1:0:0:1]:9000       [::]:*
+```
 
-*  **JSON Output:** Outputs data in JSON Lines format, perfect for piping into `jq`, SIEMs, or automated scripts.
+**Replicate `netstat -tulpn`**
 
-*  **IPv4 & IPv6 Support:** It can parse both `/proc/net/tcp` and `/proc/net/tcp6`.
+```bash
+sudo hextcp -a -p        # TCP
+sudo hextcp -U -p        # UDP
+```
 
-*  **Process Mapping:** Cross references socket inodes with `/proc/` to find the exact running process name and PID running the socket. *(Requires `sudo`)*
+**Threat hunting: watchlisted IPs and suspicious processes**
 
-*  **Threat Watchlist:** The tool can cross reference active connections against a local text file of malicious IPs. It flags matches **red** or adds a JSON warning for instant incident response triage.
+```bash
+hextcp -w watchlist.txt          # connections to known-bad IPs
+sudo hextcp -p -e                # processes running from suspicious locations
+```
 
-*  **Heuristic Parsing:** The tool automatically filters for `0A` (LISTEN) and `01` (ESTABLISHED) states, and outright ignores dead connections in order to clean up the output and only show the important info.
+Watchlist output, with unflagged rows omitted:
 
-*  **Visual Feedback:** It includes a custom terminal loading bar using `tput` and `printf` functionality.
+```text
+PROTO  STATE        LOCAL ADDRESS                  REMOTE ADDRESS
+tcp    ESTABLISHED  10.0.2.15:45296                13.12.11.10:4444              [!] WATCHLIST
+tcp6   ESTABLISHED  [2001:db8::1]:443              [2001:db8:0:1::abcd]:60000    [!] WATCHLIST
+```
 
-*  **File Output:** You can save your results directly to a file of your choice using the `-o` flag.
+Rows are highlighted red for watchlist hits and yellow for suspicious paths, and the exit code is `3`, so the check works in scripts and cron jobs:
 
-*  **Evil Path Highlighter:** The tool will flag processes running from suspicious directories such as `/tmp`,`/dev/shm`, or other binaries that have been deleted from the disk. It will highlight the matches in **yellow**.
+```bash
+sudo hextcp -e -w watchlist.txt -c >/dev/null || echo "hextcp raised an alert"
+```
 
-*  **Reverse DNS:** The tool can resolve remote IP addresses to their hostnames *(e.g `github.com`)* for instant context during an investigation.
+**Decode a table from a restricted shell on another machine**
 
-## How It Works & The Logic Behind It
+When you can only run `cat` on the target, copy the raw table back and decode it locally:
 
-The tool uses pure Bash to translate the kernel's data:
+```bash
+# on the target
+cat /proc/net/tcp
+# on your machine, paste it into a file, then:
+hextcp -f target_tcp.txt
+```
 
-*  **1. Extracting Data:** It reads the TCP file line by line, skipping the header, and isolates the Local Address, State, and Inode columns.
+**JSON for `jq` and log pipelines**
 
-*  **2.Port Conversion:** Bash natively converts hex to decimal using arithmetic expansion: `$((16#$port_hex))`.
+```bash
+hextcp -j | jq 'select(.state == "LISTEN") | .local_port'
+```
 
-*  **3. IPv4 Conversion:** It uses Bash substring extraction (`${ip_hex:6:2}`) to grab the hex string two bytes at a time, convert them to decimal format, and reverse the byte order.
+```json
+{"type":"tcp","family":"ipv4","state":"LISTEN","local_ip":"127.0.0.1","local_port":3306,"remote_ip":"0.0.0.0","remote_port":0,"uid":0,"inode":1001,"alerts":[]}
+```
 
-*  **4. Unix Socket Parsing:** It reads `/proc/net/unix`. It then extracts the state, inode, and path using the `awk` command. If the path is presenting as empty, it will label it as `(unnamed)`.
+**Unix sockets** (`hextcp -u`)
 
-*  **5. JSON Formatting:** Uses a native Bash `if` statement to check the `$JSON_OUT` variable. If true, it wraps the parsed variables into a JSON string *(e,g `{"type":"tcp","state":"..."}`)*. This is perfect for piping the script into `jq` or automating alerts in a SIEM for example.
+```text
+TYPE    STATE        PATH
+STREAM  LISTEN       /run/dbus/system_bus_socket
+DGRAM   UNCONNECTED  @abstract-name
+```
 
-*  **6. IPv6 Conversion:** It chunks the 32-character hex string into 4-byte blocks,reverses the byte order, and formats it with colons.
+---
 
-*  **7. Process Mapping (`-p`):** It takes the socket's Inode number and uses the command `find /proc/*/fd -lname "socket:\[$inode\]"` to locate which process file descriptor is holding that specified socket.
+## How It Works
 
-*  **8. Threat Watchlist:** It parses the remote address hex from the TCP table, converts it into decimal format, and then uses native `grep` functionality to check if it exists in the user provided watchlist file.
+1. **Read the table** line by line with Bash's `read`, which splits the columns without any external program.
+2. **Decode addresses.** The kernel prints each address as 32-bit words in the machine's byte order. hextcp reverses the bytes of each word, then formats IPv4 as dotted decimal and IPv6 in standard compressed form (RFC 5952: lowercase, longest zero run replaced by `::`, IPv4-mapped addresses shown as `::ffff:a.b.c.d`).
+3. **Decode ports and states.** Ports use Bash's hex arithmetic (`0x0CEA` becomes `3306`). State codes map to names from the kernel's `tcp_states.h`.
+4. **Map sockets to processes** (`-p`). Each socket has an inode number. hextcp scans every `/proc/<pid>/fd` link **once** and builds an inode-to-PID table, instead of searching `/proc` again for every socket.
+5. **Raise alerts.** Remote IPs are checked against the watchlist, loaded once into a lookup table. With `-e`, each process's `/proc/<pid>/exe` link is checked for suspicious locations.
 
-*  **9. Evil Path Highlighter:** Once a PID is found, it reads the symlink at `/proc/$pid/exe`. If the path contains `/tmp`,`/dev/shm`, or `(deleted)`, the tool will flag the process as a potential fileless malware or hidden backdoor on the system.
+---
 
-*  **10. Reverse DNS:** Uses native `getent hosts` functionality to resolve the remote IP to a hostname, appending it to the output table as a result.
+## What Changed in Version 2
 
-## Installation & Usage
+Version 2 started as a review of version 1 and found several real decoding bugs:
 
-### Option 1: Run Locally (Without Installing)
+| Version 1 | Problem | Version 2 |
+|---|---|---|
+| IPv6 bytes converted to decimal and joined | Every IPv6 address was wrong. `::ffff:127.0.0.1` printed as `0000::0000::0025:5255:1270:01` | Correct RFC 5952 output, verified against Python's `ipaddress` on 500 random addresses |
+| JSON lines ended in `}}`, and `-u -p -j` had a stray `:` | Every JSON line was invalid, so `jq` rejected it | Valid JSON Lines with escaped strings, verified in tests |
+| `-c` counted every line in the file | Ignored the state filter, and printed table headers | Counts only matching sockets |
+| No remote address column | Couldn't see who a connection was talking to | Local and remote address and port on every row |
+| Default showed IPv4 only | Missed services listening only on IPv6 | IPv4 and IPv6 together by default |
+| `find` over `/proc` once per socket | Very slow on busy systems | One pass builds an inode lookup table |
+| Watchlist compared IPv4 decoding of IPv6 addresses | IPv6 watchlist entries never matched | Works for both families, case-insensitive |
+| Decorative progress bar | Added a fixed delay and didn't reflect real progress | Removed |
 
-*  **1. Clone the repo:**
+Full details are in [CHANGELOG.md](CHANGELOG.md), including the JSON and default-output changes that affect existing scripts.
 
-```git clone https://github.com/CypherMux/hextcp.git && cd hextcp```
+---
 
-*  **2. Make the script executable:**
+## Limitations
 
-```chmod +x hextcp.sh```
+- **Linux only,** and **Bash 4.0 or newer** (for associative arrays).
+- **Little-endian byte order assumed.** Correct on x86 and almost all ARM systems. Tables from big-endian machines (some MIPS, s390x) will decode wrongly.
+- **A snapshot, not a monitor.** Short-lived connections that open and close between runs are not seen.
+- **Process mapping needs root** to see other users' processes, and doesn't work with `-f`, since a saved table has no `/proc` to match against.
+- **The suspicious-path check is a heuristic.** Legitimate software sometimes runs from `/tmp` or `memfd`, and a careful attacker avoids these locations. Treat a flag as a lead, not proof.
+- **Name resolution can leak.** `-r` sends DNS queries for remote IPs, which may be visible to whoever controls the resolver. Don't use it when that matters.
 
-*  **3. Run the script:**
+---
 
-```./hextcp.sh```
+## Testing
 
-### Option 2: Install The Tool Globally (Recommended)
+```bash
+bash tests/run_tests.sh
+```
 
-If you want to run `hextcp` from any directory without using `./`, you can install it to your system's binary path:
+52 tests run hextcp against fixture tables and a fake `/proc` tree, so results are identical on every machine. They cover IPv4 and IPv6 decoding (including 500 random IPv6 addresses compared with Python's `ipaddress` module), the pure-Bash guarantee (running with an empty `PATH`), state filtering, counts, UDP and Unix sockets, process mapping (including the BusyBox fallback), watchlist and suspicious-path alerts, JSON validity, saved-file detection, output files and exit codes.
 
-*  **1.Make the script executable:**
+GitHub Actions runs the tests and ShellCheck on every push, then runs hextcp against the build machine's real socket tables.
 
-```chmod +x hextcp.sh```
+The test suite itself uses Python, to validate JSON and to cross-check IPv6 decoding against an independent implementation. That only runs on a development machine or in CI. hextcp never needs Python on the system you're investigating.
 
-*  **2. Move it to `/usr/local/bin` and rename it:**
+---
 
-```sudo mv hextcp.sh /usr/local/bin/hextcp```
+## Contributing and Security
 
-*  **3. Run it from anywhere via:**
+Bug reports and improvements are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). For security issues, follow [SECURITY.md](SECURITY.md).
 
-```hextcp```
+---
 
-## Command Line Options
+## How This Was Built
 
-* `-o <filename>`: Save the decoded output to a specified text file.
+I built version 1 myself while working through TryHackMe rooms. Version 2 was reworked with assistance from Claude (Anthropic's AI assistant) after a review of version 1 found the decoding bugs above. I reviewed the changes and verified them with the test suite and on my own system before release.
 
-* `-a`: Show **ALL** states *(TIME_WAIT, CLOSE_WAIT, SYN_SENT, etc.)* instead of just LISTEN and ESTABLISHED.
+---
 
-* `-6`: Parse the IPv6 table *(/proc/net/tcp6)* instead of IPv4.
+## License and Disclaimer
 
-* `-p`: Show Process/PID. Maps the socket to the application running it. *(Requires `sudo`)*
+Released under the [MIT License](LICENSE).
 
-* `-c`: Count only. Outputs the total number of matching sockets instead of the full table.
-
-* `-u`: Parse the Unix socket table (`/proc/net/unix`) instead of TCP.
-
-* `-j`: Output results in JSON format. *(JSON Lines)*
-
-* `-w <file>`: This puts the tool into *Watchlist Mode*. The text file of malicious IPs given will allow the user to flag suspicious connections.
-
-* `-e`: This puts the tool into *Evil Path Mode*. It will flag processes running from `/tmp`,`/dev/shm`, or deleted binaries.
-
-* `-r`: Resolve remote IPs to hostnames.
-
-* `-h`: Display the help menu.
-
-## Examples of Some Commands
-
-*  **Prints only listening/established IPv4 ports (default)**:
-
-```hextcp```
-
-
-
-<img width="957" height="681" alt="Screenshot From 2026-10-31 16-20-49" src="https://github.com/user-attachments/assets/7865b9e4-95c2-4b07-9c0f-183c7650ebfe" />
-
-
-*  **Replicate `netstat -tulpn` (show all processes and ports)**:
-
-```sudo hextcp -a -p```
-
-
-<img width="957" height="723" alt="Screenshot From 2026-10-31 16-23-21" src="https://github.com/user-attachments/assets/4e7f97d4-fb2b-4425-b4ba-e499846b8bb9" />
-
-
-*  **Save all IPv6 connections to a file:**
-
-```hextcp -6 -a -o <file_name>```
-
-
-<img width="957" height="567" alt="Screenshot From 2026-10-31 16-25-30" src="https://github.com/user-attachments/assets/d5ce851d-8d2e-43a3-bc5b-6d2f494c9c81" />
-
-
-* **Count the number of listening ports:**
-
-```hextcp -c```
-
-
-<img width="957" height="355" alt="Screenshot From 2026-10-31 16-26-36" src="https://github.com/user-attachments/assets/dfdd7908-de9f-44ea-8fbd-50865d889eac" />
-
-*  **Find local Unix sockets and the processes using them:**
-
-```sudo hextcp -u -p```
-
-
-<img width="957" height="1072" alt="Screenshot From 2026-11-02 14-01-02" src="https://github.com/user-attachments/assets/3217e276-ad12-43dc-8e24-1bfa0d379cc4" />
-
-
-*  **Output JSON and filter with `jq` to find port 11434:**
-
-```sudo hextcp -j | jq 'select(.local_port == 11434)'```
-
-
-<img width="965" height="442" alt="Screenshot From 2026-11-03 19-20-29" src="https://github.com/user-attachments/assets/060f5ff3-e99f-4eb2-ac3b-e00c6c9cc84c" />
-
-*  **Scan for connections to known malicious IPs *(Watchlist Mode*):**
-
-```sudo hextcp -a -p -w <file>```
-
-
-<img width="960" height="651" alt="Screenshot From 2026-11-04 12-23-15" src="https://github.com/user-attachments/assets/2a4a441b-7e78-4d8b-b98c-afdea2226f40" />
-
-*  **Hunt for suspicious malware paths such as *fileless malware* or *backdoors*.**
-
-```sudo hextcp -a -p -e```
-
-
-
-<img width="1135" height="860" alt="Screenshot From 2026-11-04 12-54-11" src="https://github.com/user-attachments/assets/4bbf0c5c-854a-4779-bf99-0deb30015fb4" />
-
-*  **Investigate an unknown connection via *reverse DNS*:**
-
-```sudo hextcp -a -p -r```
-
-
-<img width="1276" height="630" alt="Screenshot From 2026-11-04 14-11-53" src="https://github.com/user-attachments/assets/4702f48c-c1b5-467c-9f89-21c3387030f7" />
-
-
-
-
-
-## Disclaimer
-
-*This tool is intended for educational purposes, CTFs, and authorized penetration testing. Always ensure you have explicit permission to enumerate systems you do not own.*
-
+hextcp is intended for education, CTFs, incident response and authorized security testing. Only enumerate systems you own or have explicit permission to test.
