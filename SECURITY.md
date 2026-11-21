@@ -1,46 +1,45 @@
 # Security Policy
 
+hextcp is often run as root during investigations, so problems in it are taken seriously and handled privately.
+
 ## Supported Versions
 
-Currently only the latest version of `hextcp` on the `main` branch is supported with security updates.
+| Version | Supported |
+|---|:--:|
+| 2.x (`main`) | ✅ |
+| 1.x | ❌ Decodes IPv6 addresses wrongly and emits invalid JSON. Please upgrade. |
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 1.0.x  | :white_check_mark: |
-| < 1.0  | :x:                |
+## Scope
 
+**In scope:**
+
+- Command injection or code execution through socket paths, process names, watchlist files, saved tables (`-f`) or DNS responses
+- Output that could mislead an investigation: wrongly decoded addresses, missed sockets, or alerts that fail to fire
+- JSON output that can be broken or injected into by attacker-controlled values, such as a crafted Unix socket path
+
+**Out of scope:**
+
+- An attacker who already has root hiding sockets or processes from `/proc` (for example with a rootkit). hextcp reads what the kernel reports.
+- Bugs in Bash, `find` or `getent` themselves
 
 ## Reporting a Vulnerability
 
-Because `hextcp` is a network enumeration and defense tool, security vulnerabilities in the code itself are taken very seriously.
+**Please do not open a public issue for security problems.**
 
-**Please do not report security vulnerabilities through public Github issues.**
+Report privately through GitHub: open the repository's **Security** tab and select **Report a vulnerability**. If that isn't possible, email **stlwtrs@proton.me**.
 
-If you believe you have stumbled upon a security vulnerability in `hextcp`, please report it privately.
+Please include:
 
-Please include the following details in your report:
-
-*  The type of issue *(e.g, command injection, arbitrary file read, buffer overflow, etc..)*
-
-*  Full paths of source files related to the issue.
-
-*  The location of the effected source code *(tag/branch/commit or direct URL)*.
-
-*  Any special configuration needed to reproduce the issue.
-
-*  Step-by-step instructions to reproduce the issue.
-
-*  PoC or exploit code *(if possible)*.
-
-*  Impact of the issue, including how an attacker might exploit it.
+- The hextcp version (`hextcp -V`), distribution and Bash version
+- Steps to reproduce, ideally with the raw `/proc/net` lines involved
+- The impact: what an attacker gains or what hextcp gets wrong
 
 ## What to Expect
 
-*  **Acknowledgement:** I will acknowledge receipt of your vulnerability report within 48 hours of submitting.
+hextcp is maintained by one person, so responses are best effort:
 
-*  **Investigation:** I will investigate the issue and keep you updated on the progress.
+- **Acknowledgement** within 7 days
+- **A fix or documented mitigation** as soon as practical
+- **Credit** in the changelog, unless you prefer to stay anonymous
 
-*  **Fix & Disclosure:** If the vulnerability is confirmed, I will develop a patch and coordinate a public disclosure timeline with you.
-
-Thank you for helping to keep `hextcp` and the open-source community as a whole safe!
-
+Please allow reasonable time for a fix before public disclosure.
