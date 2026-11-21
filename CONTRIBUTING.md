@@ -1,47 +1,32 @@
 # Contributing to hextcp
 
-First things first thank you for considering contributing to `hextcp`! It is people like you that make the open-source community such an amazing place to learn, inspire, create, and just be a part of in general.
+Thanks for your interest in hextcp. Bug reports, decoding edge cases and improvements are all welcome.
 
-## How to Report a Bug
+For security vulnerabilities, follow [SECURITY.md](SECURITY.md) instead of opening a public issue.
 
-If you find a bug such as a socket type not parsing correctly or a formatting glitch for example, please open an Issue on Github.
+## Reporting Bugs
 
-Before opening an issue, please check if it had already been reported first. When you create an issue, please include the following:
+Use the **Bug report** form in the Issues tab. If an address or state decodes wrongly, include the raw line from `/proc/net/tcp` (or `tcp6`, `udp`, `unix`) so it can be reproduced. Replace any addresses you don't want to make public.
 
-* Your Linux distribution *(Arch Linux,Ubuntu,etc..)*
+## Pull Requests
 
-*  The exact command in which you ran *(e.g, `sudo hextcp -a -p`)*.
+1. Fork the repository and create a branch from `main`.
+2. **Keep hextcp 100% native Bash.** No Python, `awk`, `sed`, `grep` or other external programs in the decoding, filtering or output path, because hextcp must work in restricted shells. The "Pure Bash guarantee" tests run it with an empty `PATH` and will fail if an external command slips in. External tools are only acceptable for optional features that Bash can't do natively (currently `-p`, `-e` and `-r`).
+3. Add a fixture line and a test in `tests/run_tests.sh` for any new decoding, flag or output change.
+4. Make sure everything passes:
 
-*  The expected output versus the actual output you had received.
+   ```bash
+   bash tests/run_tests.sh
+   shellcheck -S warning hextcp.sh tests/run_tests.sh
+   ```
 
-### Suggesting Enhancements
+5. Run `sudo ./hextcp.sh -a -p` on a real system.
+6. Update `README.md` and `CHANGELOG.md` if usage or output changes.
 
-If you have an idea for a new feature, open an Issue with the tag `[Feature Request]`. Describe exactly what you want the tool to do and why it would be useful for a real-world security analysis.
+## Code Style
 
-##  How to Submit a Pull Request
-
-*  **1.** Fork the repository and create your branch from `main`.
-
-*  **2.** If you have added code that should be tested, add tests *(if applicable to the situation)*.
-
-*  **3.** Ensure the script still passes `shellcheck` *(if you use it)*.
-
-*  **4.** Update the `README.md` with details of changes to the interface *(like if you were to add a new flag for example)*.
-
-*  **5.** Issue the pull request!
-
-## Code Styling
-
-To keep the codebase clean and readable, please follow these guidelines:
-
-*  **100% Native Bash:** Do not use external dependencies like *Python*, `jq`, or `netcat`. We want this tool to work on minimal and restricted Linux systems as much as we can.
-
-*  **Comment your logic:** If you are adding a complex hex conversion or a new `awk` parsing block, explain *why* it works in the comments.
-
-*  **Indentation:** Use indentation while writing your code, preferably one to two.
-
-*  **Variables:** Always wrap variables in quotes *(e.g, `"$VARIABLE"`)* to prevent word splitting and globbing issues.
-
-## License
-
-*By contributing, you agree that your contributions will be licensed under its MIT license.*
+- Quote every variable expansion (`"$var"`) unless word splitting is intended and commented.
+- Two-space indentation.
+- Comment the *why* behind anything involving byte order, kernel table formats or `/proc`.
+- Keep JSON output valid: pass any value that could contain user-controlled text through `json_escape`.
+- Don't break the JSON fields or exit codes without a major version bump and a changelog entry.
