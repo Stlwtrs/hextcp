@@ -1,0 +1,43 @@
+name: Bug report
+description: hextcp decoded something wrong, crashed, or behaved unexpectedly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Security issue?** Please don't use this form. Report it privately as described in SECURITY.md.
+        Remove or replace any IP addresses or hostnames you don't want to make public.
+  - type: input
+    id: version
+    attributes:
+      label: hextcp version
+      placeholder: "output of: hextcp -V"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Distribution, kernel and Bash version
+      placeholder: "Arch Linux, 6.18.2-arch1-1, GNU bash 5.2.37"
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command and output
+      description: The exact command, whether you ran it with sudo, and the full output.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: raw
+    attributes:
+      label: Raw table line (if a value decoded wrongly)
+      description: "The matching line from /proc/net/tcp (or tcp6, udp, unix), so the decoding can be reproduced."
+      render: text
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+    validations:
+      required: true
